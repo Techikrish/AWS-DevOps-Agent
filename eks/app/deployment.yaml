@@ -1,0 +1,70 @@
+###############################################################################
+# Sample App — Intentionally Misconfigured
+# Memory limit is dangerously low to trigger OOMKill under load
+# This is CHAOS SCENARIO 1
+###############################################################################
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stress-app
+  namespace: chaos-lab
+  labels:
+    app: stress-app
+    scenario: oom-kill
+    chaos: "true"
+  annotations:
+    # Hint for DevOps Agent runbook
+    devops-agent/scenario: "oom-kill"
+    devops-agent/expected-failure: "OOMKilled due to memory limit too low for workload"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stress-app
+  template:
+    metadata:
+      labels:
+        app: stress-app
+        version: "1.0.0"
+    spec:
+      containers:
+        - name: stress-app
+          image: polinux/stress:latest
+          command: ["stress"]
+          args:
+            # Requests 256MB of memory — but limit is only 64Mi
+            # Under any load this will OOMKill immediately
+            - "--vm"
+            - "1"
+            - "--vm-bytes"
+            - "256M"
+            - "--vm-hang"
+            - "0"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "100m"
+            limits:
+              # THE BUG: 64Mi limit for a process requesting 256MB
+              # DevOps Agent should identify this mismatch
+              memory: "64Mi"
+              cpu: "200m"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+      restartPolicy: Always
+      # No PodDisruptionBudget — another gap the agent should flag
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chaos-lab
+  labels:
+    purpose: devops-agent-testing

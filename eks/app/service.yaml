@@ -1,0 +1,88 @@
+###############################################################################
+# Service — Stress App
+# Exposes the app so load can be generated against it
+###############################################################################
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: stress-app-svc
+  namespace: chaos-lab
+  labels:
+    app: stress-app
+spec:
+  selector:
+    app: stress-app
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+###############################################################################
+# A second well-configured "good" app — used in Chaos Scenario 4 (cascade)
+# When stress-app OOMKills, this service's upstream calls start failing
+###############################################################################
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-app
+  namespace: chaos-lab
+  labels:
+    app: api-gateway-app
+    scenario: cascade
+  annotations:
+    devops-agent/depends-on: "stress-app,slow-downstream-lambda"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway-app
+  template:
+    metadata:
+      labels:
+        app: api-gateway-app
+        version: "1.0.0"
+    spec:
+      containers:
+        - name: api-gateway-app
+          image: nginx:1.25-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          # Readiness probe — fails when upstream (stress-app) is down
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway-svc
+  namespace: chaos-lab
+spec:
+  selector:
+    app: api-gateway-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer

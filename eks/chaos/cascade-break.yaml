@@ -1,0 +1,70 @@
+###############################################################################
+# CHAOS SCENARIO 4 — Cascade Failure
+# Combines OOMKill (Scenario 1) + Lambda timeout (Scenario 3)
+# The api-gateway-app calls both — both start failing simultaneously
+# This tests whether the agent can correlate a multi-service blast radius
+# and identify that two separate root causes are driving one user-visible outage
+###############################################################################
+
+---
+# Step 1: Apply the broken ConfigMap that the api-gateway uses for upstream routing
+# This simulates a bad config push that points to both broken services
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: upstream-routing
+  namespace: chaos-lab
+  labels:
+    scenario: cascade-failure
+  annotations:
+    chaos/scenario: "cascade"
+    chaos/note: "Both upstreams are now broken — stress-app OOMKilling, lambda timing out"
+data:
+  stress_app_endpoint: "http://stress-app-svc.chaos-lab.svc.cluster.local"
+  lambda_endpoint: "REPLACE_WITH_LAMBDA_FUNCTION_URL"  # Output from terraform apply
+  timeout_ms: "2000"      # 2s timeout — lambda delay is 4.5s, so all lambda calls fail too
+  retry_count: "1"        # Only 1 retry — errors propagate fast
+
+---
+# Step 2: Scale up api-gateway to generate more traffic to both broken upstreams
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-app
+  namespace: chaos-lab
+  annotations:
+    chaos/scenario: "cascade"
+spec:
+  replicas: 4    # More replicas = more concurrent failing calls = visible error rate spike
+  template:
+    spec:
+      containers:
+        - name: api-gateway-app
+          envFrom:
+            - configMapRef:
+                name: upstream-routing
+
+---
+# Step 3: HorizontalPodAutoscaler that will try (and fail) to scale under load
+# Agent should flag: HPA scaling events correlate with the incident start time
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: chaos-lab
+  annotations:
+    chaos/note: "HPA will thrash — scaling up doesn't help if both upstreams are broken"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

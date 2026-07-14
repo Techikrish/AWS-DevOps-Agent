@@ -1,0 +1,25 @@
+# terraform.tfvars.example
+# Copy to terraform.tfvars and fill in your values
+# NEVER commit terraform.tfvars to git — it contains secrets
+
+aws_region       = "us-east-1"
+project_name     = "devops-agent-lab"
+environment      = "dev"
+eks_cluster_name = "your-eks-cluster-name"
+alb_arn_suffix   = "app/your-alb-name/abc123"
+github_repo      = "your-org/your-repo"
+
+# Sensitive — set via environment variable instead:
+# export TF_VAR_github_token="ghp_xxxxxxxxxxxx"
+# export TF_VAR_slack_webhook_url="https://hooks.slack.com/..."
+github_token      = "REPLACE_WITH_TF_VAR_ENV"
+slack_webhook_url = "REPLACE_WITH_TF_VAR_ENV"
+
+enable_cross_account = false
+
+tags = {
+  Project   = "devops-agent-lab"
+  ManagedBy = "terraform"
+  Series    = "production-infrastructure"
+  Author    = "your-name"
+}

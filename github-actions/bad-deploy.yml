@@ -1,0 +1,116 @@
+###############################################################################
+# GitHub Actions — Bad Deployment Workflow (Chaos Scenario 2)
+# This workflow simulates a deployment regression — it pushes a broken
+# Helm values file to EKS. DevOps Agent correlates the deployment timestamp
+# with the error rate spike to identify this as the root cause.
+#
+# TO USE: Rename this file to deploy.yml in your .github/workflows/ directory
+# and it will trigger on push to the chaos-scenario-2 branch.
+###############################################################################
+
+name: Deploy Stress App (Chaos Scenario 2 — Broken Image)
+
+on:
+  push:
+    branches:
+      - chaos-scenario-2    # Trigger this branch to start Scenario 2
+  workflow_dispatch:
+    inputs:
+      use_broken_values:
+        description: 'Use broken values.yaml (triggers Scenario 2)'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER: ${{ secrets.EKS_CLUSTER_NAME }}
+  HELM_RELEASE: stress-app
+  NAMESPACE: chaos-lab
+
+jobs:
+  deploy:
+    name: Deploy to EKS
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.EKS_CLUSTER }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.14.0
+
+      - name: Select values file
+        id: values
+        run: |
+          USE_BROKEN="${{ github.event.inputs.use_broken_values || 'true' }}"
+          if [ "$USE_BROKEN" = "true" ] || [ "${{ github.ref }}" = "refs/heads/chaos-scenario-2" ]; then
+            echo "values_file=eks/helm/values-broken.yaml" >> $GITHUB_OUTPUT
+            echo "::warning::Using BROKEN values file — this deployment will fail (intentional chaos)"
+          else
+            echo "values_file=eks/helm/values-good.yaml" >> $GITHUB_OUTPUT
+          fi
+
+      # Log the deployment timestamp explicitly
+      # DevOps Agent uses this to correlate deployment time with incident start
+      - name: Log deployment metadata
+        run: |
+          echo "DEPLOYMENT_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+          echo "COMMIT_SHA=${{ github.sha }}" >> $GITHUB_ENV
+          echo "DEPLOYED_BY=${{ github.actor }}" >> $GITHUB_ENV
+          echo "VALUES_FILE=${{ steps.values.outputs.values_file }}" >> $GITHUB_ENV
+
+      - name: Deploy via Helm
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE }} ./eks/helm/chart \
+            --namespace ${{ env.NAMESPACE }} \
+            --create-namespace \
+            --values ${{ steps.values.outputs.values_file }} \
+            --set deployment.timestamp="${{ env.DEPLOYMENT_TIMESTAMP }}" \
+            --set deployment.commitSha="${{ env.COMMIT_SHA }}" \
+            --set deployment.deployedBy="${{ env.DEPLOYED_BY }}" \
+            --wait \
+            --timeout 3m \
+            --atomic    # Auto-rollback if deployment fails — but agent should catch it first
+
+      - name: Annotate deployment in CloudWatch
+        if: always()
+        run: |
+          # Create a CloudWatch annotation so DevOps Agent can pinpoint deployment time
+          aws cloudwatch put_metric_data \
+            --namespace "DevOpsAgentLab/Deployments" \
+            --metric-data \
+              MetricName=DeploymentEvent,Value=1,Unit=Count,\
+              Dimensions=[{Name=Release,Value=${{ env.HELM_RELEASE }}},{Name=Status,Value=${{ job.status }}}]
+
+      - name: Report deployment status
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          echo "Deployment status: $STATUS"
+          echo "Timestamp: ${{ env.DEPLOYMENT_TIMESTAMP }}"
+          echo "Commit: ${{ env.COMMIT_SHA }}"
+          echo "Values: ${{ steps.values.outputs.values_file }}"
+          if [ "$STATUS" = "failure" ]; then
+            echo "::error::Deployment failed — AWS DevOps Agent should be investigating now"
+          fi

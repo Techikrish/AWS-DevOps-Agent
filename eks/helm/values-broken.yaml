@@ -1,0 +1,64 @@
+###############################################################################
+# Helm Values — Broken Config (Chaos Scenario 2: Deployment Regression)
+# This represents a bad values.yaml that gets pushed via GitHub Actions
+# What the agent should find: image tag mismatch, liveness probe path wrong,
+# resource limits changed, missing readiness probe grace period
+###############################################################################
+
+replicaCount: 2
+
+image:
+  repository: nginx
+  # BAD: Pushing a non-existent tag — ImagePullBackOff will follow
+  # Good tag was: 1.25-alpine
+  tag: "1.99-nonexistent"
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    memory: "32Mi"     # Was 64Mi — regression here
+    cpu: "25m"         # Was 50m — regression here
+  limits:
+    memory: "64Mi"     # Was 128Mi — too tight now
+    cpu: "50m"
+
+# BAD: Liveness probe path changed — was /health, now /healthz (doesn't exist)
+livenessProbe:
+  httpGet:
+    path: /healthz          # Wrong path — will cause CrashLoopBackOff
+    port: 80
+  initialDelaySeconds: 5    # Was 15 — too short, probe fires before app is ready
+  periodSeconds: 10
+  failureThreshold: 2       # Was 3 — fails faster now
+
+# Readiness probe completely removed — was present in good config
+# readinessProbe: <deleted in this bad commit>
+
+autoscaling:
+  enabled: false
+
+# Missing PodDisruptionBudget — was present in good config
+# podDisruptionBudget: <deleted in this bad commit>
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  # Anti-affinity removed — all pods may land on same node now
+  podAntiAffinity: {}
+
+###############################################################################
+# WHAT THE AGENT SHOULD FLAG IN ITS INVESTIGATION:
+# 1. ImagePullBackOff due to tag "1.99-nonexistent" not found in registry
+# 2. Liveness probe hitting /healthz instead of /health — 404 responses
+# 3. Resource limits reduced — may cause OOMKill under normal load
+# 4. initialDelaySeconds reduced — premature probe causing CrashLoopBackOff
+# 5. Readiness probe removed — pod receives traffic before it's ready
+# 6. PodDisruptionBudget removed — unsafe for rolling updates
+# 7. GitHub commit history: this values.yaml changed in last deployment
+###############################################################################

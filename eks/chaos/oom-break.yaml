@@ -1,0 +1,37 @@
+###############################################################################
+# CHAOS SCENARIO 1 — OOMKill Trigger
+# Apply this to immediately push the stress-app into OOMKill loop
+# What the agent should find: memory limit mismatch, missing PDB, no multi-AZ
+###############################################################################
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stress-app
+  namespace: chaos-lab
+  annotations:
+    chaos/scenario: "oom-break"
+    chaos/applied-at: "manual-trigger"
+    # kubectl annotate deployment stress-app chaos/applied-at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -n chaos-lab
+spec:
+  replicas: 3   # Scale up replicas to increase memory pressure cluster-wide
+  template:
+    spec:
+      containers:
+        - name: stress-app
+          image: polinux/stress:latest
+          command: ["stress"]
+          args:
+            - "--vm"
+            - "2"          # Two memory workers — doubles the pressure
+            - "--vm-bytes"
+            - "256M"
+            - "--vm-hang"
+            - "0"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "200m"
+            limits:
+              memory: "64Mi"   # Still 64Mi — will OOMKill within seconds
+              cpu: "500m"
