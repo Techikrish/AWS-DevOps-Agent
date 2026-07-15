@@ -1,8 +1,8 @@
-# aws-devops-agent-lab
+# aws devops agent lab
 
-**A production-grade testbed for AWS DevOps Agent — featuring four chaos scenarios, a reusable Terraform module, and real investigation output.**
+**A testbed for AWS DevOps Agent — featuring four chaos scenarios, a reusable Terraform module, and real investigation output.**
 
-> Part of the [Production Infrastructure Series](https://medium.com) on Medium.
+> Part of the [Production Infrastructure Series](https://medium.com/@krishnafattepurkar) on Medium.
 
 [![Terraform](https://img.shields.io/badge/Terraform-≥1.6-7B42BC?logo=terraform)](https://terraform.io)
 [![AWS](https://img.shields.io/badge/AWS-DevOps_Agent_GA-FF9900?logo=amazonaws)](https://aws.amazon.com/devops-agent/)
@@ -12,7 +12,7 @@
 
 ## What This Is
 
-AWS DevOps Agent (GA: April 2026) promises autonomous incident investigation — but claims only matter when tested against real-world failure patterns. This repo is a **deliberately broken EKS environment** designed to put those claims to the test.
+AWS DevOps Agent tested against real-world failure patterns. This repo is a **deliberately broken EKS environment** designed 
 
 It contains:
 
