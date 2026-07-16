@@ -296,9 +296,7 @@ aws-devops-agent-lab/
 
 ---
 
-## License
 
-MIT — use this freely, break things deliberately.
 
 ---
 
