@@ -75,8 +75,8 @@ Read the full walkthrough: [Medium Article — Production Infrastructure Series]
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/your-org/aws-devops-agent-lab.git
-cd aws-devops-agent-lab/terraform
+git clone https://github.com/Techikrish/AWS-DevOps-Agent.git
+cd AWS-DevOps-Agent/terraform
 
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars with your cluster name and GitHub repo
@@ -268,7 +268,7 @@ These weren't in any runbook. The agent found them by analyzing patterns across 
 ## Project Structure
 
 ```
-aws-devops-agent-lab/
+aws-devops-agent
 ├── terraform/
 │   ├── main.tf                    # Agent Space IAM, CloudWatch alarms, SNS
 │   ├── lambda.tf                  # slow-downstream Lambda function
