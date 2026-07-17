@@ -21,7 +21,7 @@ It contains:
 - **Investigation runbook** — uploaded as a Custom Skill to the Agent Space
 - **GitHub Actions workflow** — simulates a deployment regression the agent can correlate
 
-Read the full walkthrough: [Medium Article — Production Infrastructure Series](#)
+Read the full walkthrough: [Medium Article](https://medium.com/@krishnafattepurkar/aws-devops-agent-meets-chaos-how-i-wired-an-autonomous-sre-to-a-deliberately-broken-eks-cluster-1cc227c5ab06?sharedUserId=krishnafattepurkar)
 
 ---
 
