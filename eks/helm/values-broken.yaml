@@ -10,7 +10,7 @@ replicaCount: 2
 image:
   repository: nginx
   # BAD: Pushing a non-existent tag — ImagePullBackOff will follow
-  # Good tag was: 1.25-alpine
+  # Good tag was: 1.30-alpine
   tag: "1.99-nonexistent"
   pullPolicy: Always
 

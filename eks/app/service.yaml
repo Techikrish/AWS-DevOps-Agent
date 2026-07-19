@@ -48,7 +48,7 @@ spec:
     spec:
       containers:
         - name: api-gateway-app
-          image: nginx:1.25-alpine
+          image: nginx:1.30-alpine
           ports:
             - containerPort: 80
           resources:

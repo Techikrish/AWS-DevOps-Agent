@@ -4,9 +4,9 @@
 
 > Part of the [Production Infrastructure Series](https://medium.com/@krishnafattepurkar) on Medium.
 
-[![Terraform](https://img.shields.io/badge/Terraform-≥1.6-7B42BC?logo=terraform)](https://terraform.io)
+[![Terraform](https://img.shields.io/badge/Terraform-≥1.9-7B42BC?logo=terraform)](https://terraform.io)
 [![AWS](https://img.shields.io/badge/AWS-DevOps_Agent_GA-FF9900?logo=amazonaws)](https://aws.amazon.com/devops-agent/)
-[![EKS](https://img.shields.io/badge/Kubernetes-EKS-326CE5?logo=kubernetes)](https://aws.amazon.com/eks/)
+[![EKS](https://img.shields.io/badge/Kubernetes-EKS_1.32-326CE5?logo=kubernetes)](https://aws.amazon.com/eks/)
 
 ---
 
@@ -62,11 +62,131 @@ Read the full walkthrough: [Medium Article](https://medium.com/@krishnafattepurk
 
 ## Prerequisites
 
-- AWS account with DevOps Agent enabled (us-east-1)
-- EKS cluster (1.28+) with Container Insights enabled
-- Terraform ≥ 1.6
-- kubectl + Helm 3.x
-- GitHub repo (for CI/CD correlation in Scenario 2)
+> **Note:** Scenarios 1 (OOMKill) and 2 (Deployment Regression) require a live EKS cluster.
+> The Terraform module in this repo provisions the **monitoring layer** (IAM, CloudWatch, SNS) — not the cluster itself.
+> Follow the steps below to create one before running those scenarios.
+
+### Required Tools
+
+Make sure the following tools are installed and configured before you begin:
+
+| Tool | Version | Check |
+|---|---|---|
+| AWS CLI | ≥ 2.x | `aws --version` |
+| eksctl | ≥ 0.200.0 | `eksctl version` |
+| kubectl | ≥ 1.32 | `kubectl version --client` |
+| Helm | ≥ 3.x | `helm version` |
+| Terraform | ≥ 1.9 (latest: 1.15.8) | `terraform version` |
+
+Install `eksctl` if you don't have it:
+
+```bash
+# Linux / macOS (via curl)
+curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz"
+tar -xzf eksctl_$(uname -s)_amd64.tar.gz
+sudo mv eksctl /usr/local/bin
+
+# macOS via Homebrew
+brew tap weaveworks/tap && brew install weaveworks/tap/eksctl
+
+# Verify
+eksctl version
+```
+
+---
+
+### Create the EKS Cluster
+
+> **Skip this step if you already have an EKS cluster (1.32+) you want to point the agent at.**
+> Just update `eks_cluster_name` in `terraform.tfvars` to match your existing cluster name.
+
+Create a dedicated cluster for this lab using `eksctl`. This provisions a managed node group across two availability zones — enough to test the AZ-spread findings the agent surfaces:
+
+```bash
+eksctl create cluster \
+  --name devops-agent-lab \
+  --region us-east-1 \
+  --version 1.32 \
+  --nodegroup-name lab-nodes \
+  --node-type t3.medium \
+  --nodes 2 \
+  --nodes-min 2 \
+  --nodes-max 4 \
+  --managed \
+  --with-oidc \
+  --asg-access \
+  --full-ecr-access \
+  --alb-ingress-access \
+  --zones us-east-1a,us-east-1b
+```
+
+This takes approximately **15–20 minutes**. The command creates:
+- A managed EKS control plane (v1.32)
+- A managed node group with 2× `t3.medium` nodes across two AZs
+- An OIDC provider (required for IAM Roles for Service Accounts)
+- Auto Scaling Group access (needed for Scenario 4 HPA)
+
+Once done, verify the cluster and configure `kubectl`:
+
+```bash
+# Update your local kubeconfig
+aws eks update-kubeconfig \
+  --region us-east-1 \
+  --name devops-agent-lab
+
+# Verify nodes are Ready
+kubectl get nodes
+```
+
+Expected output:
+```
+NAME                          STATUS   ROLES    AGE   VERSION
+ip-192-168-x-x.ec2.internal   Ready    <none>   2m    v1.32.x
+ip-192-168-x-x.ec2.internal   Ready    <none>   2m    v1.32.x
+```
+
+---
+
+### Enable Container Insights
+
+Container Insights is **required** for the CloudWatch memory alarms in Scenario 1 to fire. Enable it with a single `eksctl` command:
+
+```bash
+eksctl utils enable-addon \
+  --name amazon-cloudwatch-observability \
+  --cluster devops-agent-lab \
+  --region us-east-1 \
+  --approve
+```
+
+Verify the agent pods are running:
+
+```bash
+kubectl get pods -n amazon-cloudwatch
+# Expected: cloudwatch-agent-* pods in Running state
+```
+
+> **Why this matters:** The `node_memory_utilization` metric used by the OOMKill CloudWatch alarm
+> is published by the CloudWatch agent running inside the cluster via Container Insights.
+> Without it, the alarm will never receive data and the agent investigation won't trigger.
+
+---
+
+### Create the chaos-lab Namespace
+
+All lab workloads run in a dedicated namespace. Create it before applying any manifests:
+
+```bash
+kubectl create namespace chaos-lab
+```
+
+---
+
+### Other Prerequisites
+
+- **AWS DevOps Agent enabled** in your account — request access via the [AWS Console](https://console.aws.amazon.com/devops-agent) (GA in `us-east-1`, expanding to other regions)
+- **GitHub repository** — required for Scenario 2 (deployment regression correlation). Fork this repo or use your own
+- **Slack webhook** *(optional)* — for incident notification routing via SNS
 
 ---
 

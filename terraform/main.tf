@@ -5,11 +5,11 @@
 ###############################################################################
 
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.9.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.50.0"
+      version = ">= 6.0.0"
     }
   }
 }
@@ -45,7 +45,10 @@ resource "aws_iam_role" "devops_agent_execution" {
       {
         Effect = "Allow"
         Principal = {
-          Service = "devops-agent.amazonaws.com"
+          # NOTE: Service principal name can vary by region.
+          # Confirmed: "aidevops.amazonaws.com" (e.g. ap-southeast-2, us-east-1)
+          # Verify in your region: https://docs.aws.amazon.com/devops-agent/latest/userguide
+          Service = "aidevops.amazonaws.com"
         }
         Action = "sts:AssumeRole"
         Condition = {

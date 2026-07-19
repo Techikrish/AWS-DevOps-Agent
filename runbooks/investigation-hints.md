@@ -69,7 +69,7 @@ path changed from `/health` to `/healthz`.
 
 **Recommended Fix:**
 - Roll back via: `helm rollback stress-app 1 -n chaos-lab`
-- Fix values file to use valid image tag: `nginx:1.25-alpine`
+- Fix values file to use valid image tag: `nginx:1.30-alpine`
 - Restore liveness probe path to `/health`
 
 ---
